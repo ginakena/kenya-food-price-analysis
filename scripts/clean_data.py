@@ -55,6 +55,14 @@ df = df.drop_duplicates()
 for col in ["admin1", "admin2", "market", "category", "commodity"]:
     df[col] = df[col].str.strip()
 
+# Fill missing admin info for Hola (Tana River)
+mask = df["market"] == "Hola (Tana River)"
+df.loc[mask, "admin1"] = "Coast"
+df.loc[mask, "admin2"] = "Tana River"
+
+# Remove implausible kale price (900 KES/KG, likely a data entry error)
+df = df[~((df["commodity"] == "Kale") & (df["price_per_unit"] > 300))]    
+
 # 6. Save
 df.to_csv(OUT, index=False)
 print("Saved", df.shape, "rows to", OUT)
