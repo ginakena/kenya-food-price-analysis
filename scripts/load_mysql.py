@@ -1,10 +1,18 @@
 import os
 import pandas as pd
 from sqlalchemy import create_engine
+from sqlalchemy.engine import URL
 
-# Set this in your terminal first:  set MYSQL_PASSWORD=yourpassword
 password = os.environ["MYSQL_PASSWORD"]
-engine = create_engine(f"mysql+pymysql://root:{password}@localhost/kenya_food_prices")
+
+url = URL.create(
+    drivername="mysql+pymysql",
+    username="root",
+    password=password,
+    host="localhost",
+    database="kenya_food_prices",
+)
+engine = create_engine(url)
 
 df = pd.read_csv("data/clean/kenya_food_prices_clean.csv", parse_dates=["date"])
 df = df.rename(columns={"date": "price_date"})
