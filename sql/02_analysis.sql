@@ -4,44 +4,51 @@ USE kenya_food_prices;
 SELECT pricetype, COUNT(*) AS n FROM food_prices GROUP BY pricetype;
 SELECT MIN(price_date), MAX(price_date), COUNT(DISTINCT market), COUNT(DISTINCT commodity) FROM food_prices;
 
--- 2. Seasonality: is a commodity pricier or cheaper than usual in a given month?
--- Index of 1.10 means 10% above that year's average. Dividing by each year's own
--- average removes the long-run price rise (inflation) so months can be compared.
+-- 2. Seasonality (each market compared with its own annual average)
 WITH monthly AS (
-    SELECT commodity, year, month, AVG(price_per_unit) AS avg_price
+    SELECT commodity, market_id, year, month, AVG(price_per_unit) AS avg_price
     FROM food_prices
     WHERE pricetype = 'Retail' AND base_unit = 'KG' AND year BETWEEN 2010 AND 2025
-    GROUP BY commodity, year, month
+    GROUP BY commodity, market_id, year, month
 ),
 yearly AS (
-    SELECT commodity, year, AVG(avg_price) AS yr_avg
+    SELECT commodity, market_id, year, AVG(avg_price) AS yr_avg
     FROM monthly
-    GROUP BY commodity, year
+    GROUP BY commodity, market_id, year
+    HAVING COUNT(*) >= 6          -- only market-years with at least 6 months observed
 )
 SELECT m.commodity, m.month,
-       ROUND(AVG(m.avg_price / y.yr_avg), 3) AS seasonal_index
+       ROUND(AVG(m.avg_price / y.yr_avg), 3) AS seasonal_index,
+       COUNT(DISTINCT m.year) AS years_observed,
+       COUNT(DISTINCT m.market_id) AS markets
 FROM monthly m
-JOIN yearly y ON m.commodity = y.commodity AND m.year = y.year
+JOIN yearly y ON m.commodity = y.commodity AND m.market_id = y.market_id AND m.year = y.year
 GROUP BY m.commodity, m.month
+HAVING COUNT(DISTINCT m.year) >= 5 AND COUNT(DISTINCT m.market_id) >= 3
 ORDER BY m.commodity, m.month;
 
--- 3. Volatility: how much does the national average retail price jump month to month?
+-- 3. Volatility (month-to-month change within each market, consecutive months only)
+WITH monthly AS (
+    SELECT commodity, market_id, price_date, AVG(price_per_unit) AS avg_price
+    FROM food_prices
+    WHERE pricetype = 'Retail' AND base_unit = 'KG'
+    GROUP BY commodity, market_id, price_date
+),
+changes AS (
+    SELECT commodity, market_id,
+           avg_price / LAG(avg_price) OVER w - 1 AS pct_change,
+           TIMESTAMPDIFF(MONTH, LAG(price_date) OVER w, price_date) AS gap_months
+    FROM monthly
+    WINDOW w AS (PARTITION BY commodity, market_id ORDER BY price_date)
+)
 SELECT commodity,
        ROUND(STDDEV(pct_change) * 100, 1) AS volatility_pct,
-       COUNT(*) AS months
-FROM (
-    SELECT commodity, price_date,
-           avg_price / LAG(avg_price) OVER (PARTITION BY commodity ORDER BY price_date) - 1 AS pct_change
-    FROM (
-        SELECT commodity, price_date, AVG(price_per_unit) AS avg_price
-        FROM food_prices
-        WHERE pricetype = 'Retail' AND base_unit = 'KG'
-        GROUP BY commodity, price_date
-    ) m
-) c
-WHERE pct_change IS NOT NULL
+       COUNT(*) AS obs,
+       COUNT(DISTINCT market_id) AS markets
+FROM changes
+WHERE gap_months = 1
 GROUP BY commodity
-HAVING COUNT(*) >= 60
+HAVING COUNT(*) >= 200
 ORDER BY volatility_pct DESC;
 
 -- 4. Regional price gap: white maize, retail, 2025
