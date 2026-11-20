@@ -51,10 +51,44 @@ GROUP BY commodity
 HAVING COUNT(*) >= 200
 ORDER BY volatility_pct DESC;
 
--- 4. Regional price gap: white maize, retail, 2025
-SELECT admin1, ROUND(AVG(price_per_unit), 1) AS avg_kes_per_kg, COUNT(*) AS n
+
+
+
+-- 4. Maize seasonality across the full series, split into two eras
+WITH maize AS (
+    SELECT market_id, year, month, price_per_unit
+    FROM food_prices
+    WHERE pricetype = 'Retail' AND base_unit = 'KG'
+      AND commodity IN ('Maize (white)', 'Maize')
+),
+monthly AS (
+    SELECT market_id, year, month, AVG(price_per_unit) AS avg_price
+    FROM maize
+    GROUP BY market_id, year, month
+),
+yearly AS (
+    SELECT market_id, year, AVG(avg_price) AS yr_avg
+    FROM monthly
+    GROUP BY market_id, year
+    HAVING COUNT(*) >= 6
+)
+SELECT CASE WHEN m.year <= 2015 THEN '2006-2015' ELSE '2016-2026' END AS era,
+       m.month,
+       ROUND(AVG(m.avg_price / y.yr_avg), 3) AS seasonal_index,
+       COUNT(DISTINCT m.market_id) AS markets,
+       COUNT(DISTINCT m.year) AS years
+FROM monthly m
+JOIN yearly y ON m.market_id = y.market_id AND m.year = y.year
+GROUP BY era, m.month
+HAVING COUNT(DISTINCT m.market_id) >= 3
+ORDER BY era, m.month;
+
+-- 5. Regional gap: maize retail price per KG, 2024-2026
+SELECT admin1, ROUND(AVG(price_per_unit), 1) AS avg_kes_per_kg,
+       COUNT(DISTINCT market_id) AS markets, COUNT(*) AS n
 FROM food_prices
-WHERE commodity = 'Maize (white)' AND pricetype = 'Retail'
-  AND base_unit = 'KG' AND year = 2025
+WHERE commodity = 'Maize' AND pricetype = 'Retail'
+  AND base_unit = 'KG' AND year BETWEEN 2024 AND 2026
 GROUP BY admin1
+HAVING COUNT(DISTINCT market_id) >= 2
 ORDER BY avg_kes_per_kg DESC;
