@@ -82,7 +82,7 @@ GROUP BY era, m.month
 HAVING COUNT(DISTINCT m.market_id) >= 3
 ORDER BY era, m.month;
 
--- 5a. Which maize series cover which regions? (2024-2026, retail, per KG)
+--  Which maize series cover which regions? (2024-2026, retail, per KG)
 SELECT commodity, admin1, COUNT(DISTINCT market_id) AS markets, COUNT(*) AS n
 FROM food_prices
 WHERE commodity LIKE 'Maize%' AND commodity NOT LIKE 'Maize flour%'
@@ -90,7 +90,7 @@ WHERE commodity LIKE 'Maize%' AND commodity NOT LIKE 'Maize flour%'
 GROUP BY commodity, admin1
 ORDER BY admin1, commodity;
 
--- 5. Regional gap, averaging each market first so busy markets don't dominate
+--  Regional gap, averaging each market first so busy markets don't dominate
 SELECT admin1, ROUND(AVG(market_avg), 1) AS avg_kes_per_kg, COUNT(*) AS markets
 FROM (
     SELECT admin1, market_id, AVG(price_per_unit) AS market_avg
@@ -103,7 +103,7 @@ GROUP BY admin1
 HAVING COUNT(*) >= 3
 ORDER BY avg_kes_per_kg DESC;
 
--- 5c. Regional maize price by year (are regions comparable within each year?)
+--  Regional maize price by year (are regions comparable within each year?)
 SELECT admin1, year, ROUND(AVG(price_per_unit), 1) AS avg_kes_per_kg,
        COUNT(DISTINCT market_id) AS markets
 FROM food_prices
