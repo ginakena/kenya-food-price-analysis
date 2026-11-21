@@ -102,3 +102,12 @@ FROM (
 GROUP BY admin1
 HAVING COUNT(*) >= 3
 ORDER BY avg_kes_per_kg DESC;
+
+-- 5c. Regional maize price by year (are regions comparable within each year?)
+SELECT admin1, year, ROUND(AVG(price_per_unit), 1) AS avg_kes_per_kg,
+       COUNT(DISTINCT market_id) AS markets
+FROM food_prices
+WHERE commodity IN ('Maize', 'Maize (white, dry)')
+  AND pricetype = 'Retail' AND base_unit = 'KG' AND year BETWEEN 2024 AND 2026
+GROUP BY admin1, year
+ORDER BY year, avg_kes_per_kg DESC;
