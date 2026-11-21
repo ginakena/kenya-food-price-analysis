@@ -27,7 +27,8 @@ GROUP BY m.commodity, m.month
 HAVING COUNT(DISTINCT m.year) >= 5 AND COUNT(DISTINCT m.market_id) >= 3
 ORDER BY m.commodity, m.month;
 
--- 3. Volatility (month-to-month change within each market, consecutive months only)
+
+-- 3. Volatility robustness: all changes vs excluding jumps of 100% or more
 WITH monthly AS (
     SELECT commodity, market_id, price_date, AVG(price_per_unit) AS avg_price
     FROM food_prices
@@ -42,17 +43,15 @@ changes AS (
     WINDOW w AS (PARTITION BY commodity, market_id ORDER BY price_date)
 )
 SELECT commodity,
-       ROUND(STDDEV(pct_change) * 100, 1) AS volatility_pct,
-       COUNT(*) AS obs,
-       COUNT(DISTINCT market_id) AS markets
+       ROUND(STDDEV(pct_change) * 100, 1) AS volatility_all,
+       ROUND(STDDEV(CASE WHEN ABS(pct_change) < 1 THEN pct_change END) * 100, 1) AS volatility_trimmed,
+       SUM(ABS(pct_change) >= 1) AS jumps_100pct_plus,
+       COUNT(*) AS obs
 FROM changes
 WHERE gap_months = 1
 GROUP BY commodity
 HAVING COUNT(*) >= 200
-ORDER BY volatility_pct DESC;
-
-
-
+ORDER BY volatility_trimmed DESC;
 
 -- 4. Maize seasonality across the full series, split into two eras
 WITH maize AS (
@@ -83,12 +82,23 @@ GROUP BY era, m.month
 HAVING COUNT(DISTINCT m.market_id) >= 3
 ORDER BY era, m.month;
 
--- 5. Regional gap: maize retail price per KG, 2024-2026
-SELECT admin1, ROUND(AVG(price_per_unit), 1) AS avg_kes_per_kg,
-       COUNT(DISTINCT market_id) AS markets, COUNT(*) AS n
+-- 5a. Which maize series cover which regions? (2024-2026, retail, per KG)
+SELECT commodity, admin1, COUNT(DISTINCT market_id) AS markets, COUNT(*) AS n
 FROM food_prices
-WHERE commodity = 'Maize' AND pricetype = 'Retail'
-  AND base_unit = 'KG' AND year BETWEEN 2024 AND 2026
+WHERE commodity LIKE 'Maize%' AND commodity NOT LIKE 'Maize flour%'
+  AND pricetype = 'Retail' AND base_unit = 'KG' AND year BETWEEN 2024 AND 2026
+GROUP BY commodity, admin1
+ORDER BY admin1, commodity;
+
+-- 5. Regional gap, averaging each market first so busy markets don't dominate
+SELECT admin1, ROUND(AVG(market_avg), 1) AS avg_kes_per_kg, COUNT(*) AS markets
+FROM (
+    SELECT admin1, market_id, AVG(price_per_unit) AS market_avg
+    FROM food_prices
+    WHERE commodity IN ('Maize', 'Maize (white, dry)')
+      AND pricetype = 'Retail' AND base_unit = 'KG' AND year BETWEEN 2024 AND 2026
+    GROUP BY admin1, market_id
+) m
 GROUP BY admin1
-HAVING COUNT(DISTINCT market_id) >= 2
+HAVING COUNT(*) >= 3
 ORDER BY avg_kes_per_kg DESC;
